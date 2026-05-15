@@ -1,12 +1,11 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, session
+import sqlite3
 import random
 import smtplib
 import time
 import os
 from datetime import datetime, timedelta
-import psycopg2
-import psycopg2.extras
 
 app = Flask(__name__)
 
@@ -15,84 +14,177 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "secret123")
 app.permanent_session_lifetime = timedelta(minutes=10)
 
 # ========================================================
-# 1. DATABASE CONNECTION CONFIGURATION
+# 1. DATABASE CONNECTION WITH PARAMETER STYLE DETECTION
 # ========================================================
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db():
+    """Returns database connection and the parameter style for placeholders"""
     if DATABASE_URL:
-        # Production: Cloud PostgreSQL (Using psycopg2)
+        # Production: PostgreSQL
+        import psycopg2
+        import psycopg2.extras
         
         url = DATABASE_URL
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
             
         conn = psycopg2.connect(url, sslmode="require")
-        # DictCursor allows accessing columns by name: user["username"]
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        return conn, cursor
+        conn.cursor_factory = psycopg2.extras.DictCursor
+        return conn, "pg"  # Return connection and database type
     else:
-        # Development: Local Laptop SQLite
-        import sqlite3
+        # Development: SQLite
         conn = sqlite3.connect("evoting.db")
         conn.row_factory = sqlite3.Row
-        return conn, conn.cursor()
+        return conn, "sqlite"
 
-def get_p():
-    """Returns %s for PostgreSQL (Cloud) or ? for SQLite (Local)"""
-    return "%s" if DATABASE_URL else "?"
+def get_placeholder(db_type):
+    """Returns the correct parameter placeholder based on database type"""
+    return "%s" if db_type == "pg" else "?"
 
 # ========================================================
-# 2. DATABASE INITIALIZATION (Runs on Startup)
+# 2. DATABASE INITIALIZATION
 # ========================================================
-conn, cursor = get_db()
-id_type = "SERIAL PRIMARY KEY" if DATABASE_URL else "INTEGER PRIMARY KEY AUTOINCREMENT"
+conn, db_type = get_db()
+cursor = conn.cursor()
 
-cursor.execute(f"""
-CREATE TABLE IF NOT EXISTS users(
-    id {id_type},
-    name TEXT,
-    username TEXT UNIQUE,
-    email TEXT UNIQUE,
-    password TEXT,
-    role TEXT DEFAULT 'voter',
-    created_at TEXT
-)""")
+# Handle auto-increment differences
+if db_type == "pg":
+    id_type = "SERIAL PRIMARY KEY"
+    # PostgreSQL specific integer type for foreign keys
+    ref_type = "INTEGER"
+else:
+    id_type = "INTEGER PRIMARY KEY AUTOINCREMENT"
+    ref_type = "INTEGER"
 
-cursor.execute(f"""
-CREATE TABLE IF NOT EXISTS elections(
-    id {id_type},
-    title TEXT,
-    description TEXT,
-    candidate_deadline TEXT,
-    vote_start TEXT,
-    vote_end TEXT
-)""")
-
-cursor.execute(f"""
-CREATE TABLE IF NOT EXISTS candidates(
-    id {id_type},
-    user_id INTEGER,
-    election_id INTEGER,
-    manifesto TEXT,
-    approved INTEGER DEFAULT 0
-)""")
-
-cursor.execute(f"""
-CREATE TABLE IF NOT EXISTS votes(
-    id {id_type},
-    user_id INTEGER,
-    election_id INTEGER,
-    candidate_id INTEGER,
-    timestamp TEXT,
-    UNIQUE(user_id, election_id)
-)""")
+# Create tables with proper syntax for each database
+if db_type == "pg":
+    # PostgreSQL uses TEXT instead of TEXT (same)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+        username TEXT UNIQUE,
+        email TEXT UNIQUE,
+        password TEXT,
+        role TEXT DEFAULT 'voter',
+        created_at TEXT
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS elections(
+        id SERIAL PRIMARY KEY,
+        title TEXT,
+        description TEXT,
+        candidate_deadline TEXT,
+        vote_start TEXT,
+        vote_end TEXT
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS candidates(
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        election_id INTEGER,
+        manifesto TEXT,
+        approved INTEGER DEFAULT 0
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS votes(
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        election_id INTEGER,
+        candidate_id INTEGER,
+        timestamp TEXT,
+        UNIQUE(user_id, election_id)
+    )
+    """)
+else:
+    # SQLite table creation
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        username TEXT UNIQUE,
+        email TEXT UNIQUE,
+        password TEXT,
+        role TEXT DEFAULT 'voter',
+        created_at TEXT
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS elections(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        description TEXT,
+        candidate_deadline TEXT,
+        vote_start TEXT,
+        vote_end TEXT
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS candidates(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        election_id INTEGER,
+        manifesto TEXT,
+        approved INTEGER DEFAULT 0
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS votes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        election_id INTEGER,
+        candidate_id INTEGER,
+        timestamp TEXT,
+        UNIQUE(user_id, election_id)
+    )
+    """)
 
 conn.commit()
 conn.close()
 
+# Helper function to execute queries with proper parameter placeholders
+def execute_query(query, params=None, fetch_one=False, fetch_all=False, commit=False):
+    """Execute a query with automatic parameter placeholder conversion"""
+    conn, db_type = get_db()
+    cursor = conn.cursor()
+    
+    # Convert ? to %s for PostgreSQL if needed
+    if db_type == "pg" and "?" in query:
+        query = query.replace("?", "%s")
+    
+    try:
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        
+        result = None
+        if fetch_one:
+            result = cursor.fetchone()
+        elif fetch_all:
+            result = cursor.fetchall()
+        
+        if commit:
+            conn.commit()
+        
+        return result, conn
+    except Exception as e:
+        conn.rollback() if hasattr(conn, 'rollback') else None
+        conn.close()
+        raise e
+
 # ========================================================
-# 3. PUBLIC ROUTES (Home, Register, Login)
+# 3. ROUTES
 # ========================================================
 
 @app.route("/")
@@ -101,7 +193,6 @@ def home():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    p = get_p()
     if request.method == "POST":
         name = request.form.get("name")
         username = request.form.get("username")
@@ -112,18 +203,27 @@ def register():
         if password != confirm:
             return "Passwords do not match"
 
-        conn, cursor = get_db()
-        cursor.execute(f"SELECT * FROM users WHERE username={p}", (username,))
-        if cursor.fetchone():
-            conn.close()
-            return "Username already exists"
+        # Check if username exists
+        user_result, conn1 = execute_query(
+            "SELECT * FROM users WHERE username = ?", 
+            (username,), 
+            fetch_one=True
+        )
+        if user_result:
+            conn1.close()
+            return "Username exists"
+        conn1.close()
 
-        cursor.execute(f"SELECT * FROM users WHERE email={p}", (email,))
-        if cursor.fetchone():
-            conn.close()
-            return "Email already exists"
-        
-        conn.close()
+        # Check if email exists
+        email_result, conn2 = execute_query(
+            "SELECT * FROM users WHERE email = ?", 
+            (email,), 
+            fetch_one=True
+        )
+        if email_result:
+            conn2.close()
+            return "Email exists"
+        conn2.close()
 
         session["temp_user"] = {
             "name": name,
@@ -143,7 +243,9 @@ def register():
             server = smtplib.SMTP("smtp.gmail.com", 587)
             server.starttls()
             server.login(email_user, email_pass)
+
             message = f"Subject: Email Verification OTP\n\nYour OTP is {otp}\n\nValid for 5 minutes"
+
             server.sendmail(email_user, email, message)
             server.quit()
         except Exception as e:
@@ -155,27 +257,32 @@ def register():
 
 @app.route("/verify_register", methods=["GET", "POST"])
 def verify_register():
-    p = get_p()
     if "reg_otp" not in session:
         return redirect("/register")
 
     if time.time() - session["otp_time"] > 300:
         session.clear()
-        return "OTP expired. Please register again."
+        return "OTP expired"
 
     if request.method == "POST":
         if request.form.get("otp") != session["reg_otp"]:
-            return "Incorrect OTP"
+            return "Wrong OTP"
 
         user = session["temp_user"]
-        conn, cursor = get_db()
-        cursor.execute(f"""
-            INSERT INTO users (name, username, email, password, role, created_at)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p})
-        """, (user["name"], user["username"], user["email"], user["password"], "voter", datetime.now().strftime("%Y-%m-%d")))
 
-        conn.commit()
+        _, conn = execute_query("""
+            INSERT INTO users (name, username, email, password, role, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            user["name"],
+            user["username"],
+            user["email"],
+            user["password"],
+            "voter",
+            datetime.now().strftime("%Y-%m-%d")
+        ), commit=True)
         conn.close()
+
         session.clear()
         return redirect("/login")
 
@@ -183,164 +290,229 @@ def verify_register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    p = get_p()
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
 
-        # Hardcoded Admin Login for quick access
+        # ADMIN LOGIN
         if username == "admin" and password == "admin123":
             session["username"] = "admin"
             session["role"] = "admin"
             return redirect("/admin")
 
-        conn, cursor = get_db()
-        cursor.execute(f"SELECT * FROM users WHERE username={p}", (username,))
-        user = cursor.fetchone()
+        user_result, conn = execute_query(
+            "SELECT * FROM users WHERE username = ?", 
+            (username,), 
+            fetch_one=True
+        )
+        
+        if not user_result:
+            conn.close()
+            return "Invalid login"
+
+        if check_password_hash(user_result["password"], password):
+            session["username"] = username
+            session["role"] = "voter"
+            conn.close()
+            return redirect("/dashboard")
+
         conn.close()
-
-        if not user or not check_password_hash(user["password"], password):
-            return "Invalid login credentials"
-
-        session["username"] = username
-        session["role"] = user["role"]
-        return redirect("/dashboard")
+        return "Invalid password"
 
     return render_template("auth/login.html")
 
-# ========================================================
-# 4. VOTER ROUTES (Dashboard, Profile, Voting)
-# ========================================================
-
 @app.route("/dashboard")
 def dashboard():
-    p = get_p()
-    if "username" not in session: return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute(f"SELECT * FROM users WHERE username={p}", (session["username"],))
-    user = cursor.fetchone()
+    if "username" not in session:
+        return redirect("/login")
+
+    user_result, conn = execute_query(
+        "SELECT * FROM users WHERE username = ?", 
+        (session["username"],), 
+        fetch_one=True
+    )
     conn.close()
-    return render_template("voter/dashboard.html", user=user)
+
+    return render_template("voter/dashboard.html", user=user_result)
 
 @app.route("/profile")
 def profile():
-    p = get_p()
-    if "username" not in session: return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute(f"SELECT * FROM users WHERE username={p}", (session["username"],))
-    user = cursor.fetchone()
+    if "username" not in session:
+        return redirect("/login")
+
+    user_result, conn = execute_query(
+        "SELECT * FROM users WHERE username = ?", 
+        (session["username"],), 
+        fetch_one=True
+    )
     conn.close()
-    return render_template("voter/profile.html", user=user)
+
+    return render_template("voter/profile.html", user=user_result)
 
 @app.route("/elections")
 def elections():
-    if "username" not in session: return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute("SELECT * FROM elections")
-    elections_list = cursor.fetchall()
+    if "username" not in session:
+        return redirect("/login")
+
+    elections_result, conn1 = execute_query("SELECT * FROM elections", fetch_all=True)
     
-    # Get approved candidates
-    cursor.execute("""
-        SELECT candidates.*, users.name 
-        FROM candidates 
-        JOIN users ON candidates.user_id = users.id 
+    candidates_result, conn2 = execute_query("""
+        SELECT candidates.*, users.name
+        FROM candidates
+        JOIN users ON candidates.user_id = users.id
         WHERE approved = 1
-    """)
-    candidates_list = cursor.fetchall()
-    conn.close()
-    return render_template("voter/elections.html", elections=elections_list, candidates=candidates_list)
+    """, fetch_all=True)
+    
+    conn1.close()
+    conn2.close()
+
+    return render_template(
+        "voter/elections.html",
+        elections=elections_result,
+        candidates=candidates_result
+    )
 
 @app.route("/apply")
 def apply():
-    if "username" not in session: return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute("SELECT * FROM elections")
-    elections_list = cursor.fetchall()
+    if "username" not in session:
+        return redirect("/login")
+
+    elections_result, conn = execute_query("SELECT * FROM elections", fetch_all=True)
     conn.close()
-    return render_template("candidate/apply_candidate.html", elections=elections_list)
+
+    return render_template("candidate/apply_candidate.html", elections=elections_result)
 
 @app.route("/apply_candidate", methods=["POST"])
 def apply_candidate():
-    p = get_p()
-    if "username" not in session: return redirect("/login")
+    if "username" not in session:
+        return redirect("/login")
+
     manifesto = request.form.get("manifesto")
     election_id = request.form.get("election_id")
 
-    conn, cursor = get_db()
-    cursor.execute(f"SELECT candidate_deadline FROM elections WHERE id={p}", (election_id,))
-    election = cursor.fetchone()
-    
-    if not election:
-        conn.close()
+    # Check deadline
+    election_result, conn1 = execute_query(
+        "SELECT candidate_deadline FROM elections WHERE id = ?", 
+        (election_id,), 
+        fetch_one=True
+    )
+
+    if not election_result:
+        conn1.close()
         return "Election not found"
 
-    deadline = datetime.strptime(election["candidate_deadline"], "%Y-%m-%d")
+    deadline = datetime.strptime(election_result["candidate_deadline"], "%Y-%m-%d")
+
     if datetime.now() > deadline:
-        conn.close()
+        conn1.close()
         return "Candidate application deadline has passed"
+    conn1.close()
 
-    cursor.execute(f"SELECT id FROM users WHERE username={p}", (session["username"],))
-    user_id = cursor.fetchone()["id"]
+    # Get user id
+    user_result, conn2 = execute_query(
+        "SELECT id FROM users WHERE username = ?", 
+        (session["username"],), 
+        fetch_one=True
+    )
 
-    cursor.execute(f"SELECT * FROM candidates WHERE user_id={p} AND election_id={p}", (user_id, election_id))
-    if cursor.fetchone():
-        conn.close()
-        return "You have already applied for this election"
+    if not user_result:
+        conn2.close()
+        return "User not found"
 
-    cursor.execute(f"INSERT INTO candidates (user_id, election_id, manifesto, approved) VALUES ({p}, {p}, {p}, 0)", 
-                   (user_id, election_id, manifesto))
-    conn.commit()
-    conn.close()
+    user_id = user_result["id"]
+    conn2.close()
+
+    # Check if already applied
+    existing_result, conn3 = execute_query(
+        "SELECT * FROM candidates WHERE user_id = ? AND election_id = ?", 
+        (user_id, election_id), 
+        fetch_one=True
+    )
+
+    if existing_result:
+        conn3.close()
+        return "You already applied for this election"
+    conn3.close()
+
+    # Insert application
+    _, conn4 = execute_query("""
+        INSERT INTO candidates (user_id, election_id, manifesto, approved)
+        VALUES (?, ?, ?, 0)
+    """, (user_id, election_id, manifesto), commit=True)
+    conn4.close()
+
     return "Application sent to admin for approval"
 
 @app.route("/vote/<int:election_id>", methods=["GET", "POST"])
 def vote(election_id):
-    p = get_p()
-    if "username" not in session: return redirect("/login")
-    conn, cursor = get_db()
-    
-    # Get User ID
-    cursor.execute(f"SELECT id FROM users WHERE username={p}", (session["username"],))
-    user_id = cursor.fetchone()["id"]
+    if "username" not in session:
+        return redirect("/login")
+
+    # Get election dates
+    election_result, conn1 = execute_query(
+        "SELECT vote_start, vote_end FROM elections WHERE id = ?", 
+        (election_id,), 
+        fetch_one=True
+    )
+
+    vote_start = datetime.strptime(election_result["vote_start"], "%Y-%m-%d")
+    vote_end = datetime.strptime(election_result["vote_end"], "%Y-%m-%d")
+
+    if datetime.now() < vote_start:
+        conn1.close()
+        return "Voting has not started yet"
+
+    if datetime.now() > vote_end:
+        conn1.close()
+        return "Voting has ended"
+    conn1.close()
+
+    # Get user id
+    user_result, conn2 = execute_query(
+        "SELECT id FROM users WHERE username = ?", 
+        (session["username"],), 
+        fetch_one=True
+    )
+    user_id = user_result["id"]
+    conn2.close()
 
     if request.method == "POST":
         candidate_id = request.form.get("candidate")
+
         try:
-            cursor.execute(f"""
-                INSERT INTO votes (user_id, election_id, candidate_id, timestamp) 
-                VALUES ({p}, {p}, {p}, {p})
-            """, (user_id, election_id, candidate_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            conn.commit()
-        except:
-            conn.close()
-            return "You have already voted in this election"
-        conn.close()
+            _, conn3 = execute_query("""
+                INSERT INTO votes (user_id, election_id, candidate_id, timestamp)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, election_id, candidate_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")), commit=True)
+            conn3.close()
+        except Exception as e:
+            return "You already voted in this election"
+
         return "Vote submitted successfully"
 
-    # GET: Show candidates for this election
-    cursor.execute(f"""
-        SELECT candidates.*, users.name 
-        FROM candidates 
-        JOIN users ON candidates.user_id = users.id 
-        WHERE election_id={p} AND approved=1
-    """, (election_id,))
-    candidates_list = cursor.fetchall()
-    conn.close()
-    return render_template("elections/vote.html", candidates=candidates_list, election_id=election_id)
+    # Get candidates for this election
+    candidates_result, conn4 = execute_query("""
+        SELECT candidates.*, users.name
+        FROM candidates
+        JOIN users ON candidates.user_id = users.id
+        WHERE election_id = ? AND approved = 1
+    """, (election_id,), fetch_all=True)
+    conn4.close()
 
-# ========================================================
-# 5. ADMIN ROUTES (Manage Elections, Candidates, Results)
-# ========================================================
+    return render_template("elections/vote.html", candidates=candidates_result)
 
 @app.route("/admin")
 def admin():
-    if session.get("role") != "admin": return redirect("/login")
+    if session.get("role") != "admin":
+        return redirect("/login")
+
     return render_template("admin/admin_dashboard.html")
 
 @app.route("/create_election", methods=["GET", "POST"])
 def create_election():
-    p = get_p()
-    if session.get("role") != "admin": return redirect("/login")
+    if session.get("role") != "admin":
+        return redirect("/login")
+
     if request.method == "POST":
         title = request.form.get("title")
         description = request.form.get("description")
@@ -348,49 +520,55 @@ def create_election():
         vote_start = request.form.get("vote_start")
         vote_end = request.form.get("vote_end")
 
-        conn, cursor = get_db()
-        cursor.execute(f"""
-            INSERT INTO elections (title, description, candidate_deadline, vote_start, vote_end) 
-            VALUES ({p}, {p}, {p}, {p}, {p})
-        """, (title, description, candidate_deadline, vote_start, vote_end))
-        conn.commit()
+        _, conn = execute_query("""
+            INSERT INTO elections (title, description, candidate_deadline, vote_start, vote_end)
+            VALUES (?, ?, ?, ?, ?)
+        """, (title, description, candidate_deadline, vote_start, vote_end), commit=True)
         conn.close()
+
         return redirect("/admin")
+
     return render_template("admin/create_election.html")
 
 @app.route("/manage_candidates")
 def manage_candidates():
-    if session.get("role") != "admin": return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute("""
-        SELECT candidates.id, users.name, elections.title, candidates.approved 
-        FROM candidates 
-        JOIN users ON candidates.user_id=users.id 
-        JOIN elections ON candidates.election_id=elections.id
-    """)
-    candidates_list = cursor.fetchall()
+    if session.get("role") != "admin":
+        return redirect("/login")
+
+    candidates_result, conn = execute_query("""
+        SELECT candidates.id, users.name, elections.title, candidates.approved
+        FROM candidates
+        JOIN users ON candidates.user_id = users.id
+        JOIN elections ON candidates.election_id = elections.id
+    """, fetch_all=True)
     conn.close()
-    return render_template("admin/manage_candidates.html", candidates=candidates_list)
+
+    return render_template("admin/manage_candidates.html", candidates=candidates_result)
 
 @app.route("/approve_candidate/<int:candidate_id>")
 def approve_candidate(candidate_id):
-    p = get_p()
-    if session.get("role") != "admin": return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute(f"UPDATE candidates SET approved=1 WHERE id={p}", (candidate_id,))
-    conn.commit()
+    if session.get("role") != "admin":
+        return redirect("/login")
+
+    _, conn = execute_query(
+        "UPDATE candidates SET approved = 1 WHERE id = ?", 
+        (candidate_id,), 
+        commit=True
+    )
     conn.close()
+
     return redirect("/manage_candidates")
 
 @app.route("/results")
 def results():
-    if session.get("role") != "admin": return redirect("/login")
-    conn, cursor = get_db()
-    cursor.execute("""
+    if session.get("role") != "admin":
+        return redirect("/login")
+
+    rows_result, conn = execute_query("""
         SELECT 
-            elections.title AS election_title, 
-            users.name AS candidate_name, 
-            candidates.manifesto, 
+            elections.title AS election_title,
+            users.name AS candidate_name,
+            candidates.manifesto,
             COUNT(votes.id) AS vote_count
         FROM candidates
         JOIN users ON candidates.user_id = users.id
@@ -398,17 +576,16 @@ def results():
         LEFT JOIN votes ON votes.candidate_id = candidates.id
         GROUP BY candidates.id, elections.title, users.name, candidates.manifesto, elections.id
         ORDER BY elections.id
-    """)
-    rows = cursor.fetchall()
+    """, fetch_all=True)
     conn.close()
-    
-    # Organize data by election title
+
     elections_dict = {}
-    for r in rows:
-        title = r["election_title"]
-        if title not in elections_dict:
-            elections_dict[title] = []
-        elections_dict[title].append(r)
+    for r in rows_result:
+        election = r["election_title"]
+        if election not in elections_dict:
+            elections_dict[election] = []
+        elections_dict[election].append(r)
+
     return render_template("admin/results.html", elections=elections_dict)
 
 @app.route("/logout")
@@ -417,9 +594,8 @@ def logout():
     return redirect("/")
 
 # ========================================================
-# 6. SERVER START
+# 4. RUN THE APP
 # ========================================================
 if __name__ == "__main__":
-    # Render assigns a port dynamically; fallback to 5000 for local testing
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
