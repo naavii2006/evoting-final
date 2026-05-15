@@ -164,57 +164,38 @@ def home():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
+        un = request.form.get("username")
+        em = request.form.get("email")
+        pw = request.form.get("password")
+        
+        # 1. DB Check
+        exists = execute_query("SELECT id FROM users WHERE username = ? OR email = ?", (un, em), fetch_one=True)
+        if exists: return "User already exists"
+
+        # 2. Setup Session
+        otp = str(random.randint(1000, 9999))
+        session["temp_user"] = {
+            "name": request.form.get("name"), "username": un, "email": em,
+            "password": generate_password_hash(pw)
+        }
+        session["reg_otp"] = otp
+
+        # 3. GMAIL SMTP (Replaces SendGrid)
         try:
-            name = request.form.get("name")
-            username = request.form.get("username")
-            email = request.form.get("email")
-            password = request.form.get("password")
-            confirm = request.form.get("confirm_password")
+            e_user = os.environ.get("EMAIL_USER")
+            e_pass = os.environ.get("EMAIL_PASS")
             
-            if password != confirm:
-                return "Passwords do not match"
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+                server.login(e_user, e_pass)
+                server.sendmail(e_user, em, f"Subject: OTP\n\nYour OTP is {otp}")
             
-            if len(password) < 6:
-                return "Password must be at least 6 characters"
-            
-            conn = get_db_connection()
-            cur = conn.cursor()
-            
-            cur.execute("SELECT id FROM users WHERE username = %s", (username,))
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                return "Username already exists"
-            
-            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                return "Email already exists"
-            
-            cur.close()
-            conn.close()
-            
-            hashed_password = generate_password_hash(password)
-            
-            session["temp_user"] = {
-                "name": name,
-                "username": username,
-                "email": email,
-                "password": hashed_password
-            }
-            
-            otp = str(random.randint(100000, 999999))
-            save_verification_code(email, otp)
-            
-            if send_verification_email(email, otp):
-                return redirect("/verify-email")
-            else:
-                return "Failed to send verification email. Please try again."
+            return redirect("/verify_register")
             
         except Exception as e:
-            return f"Registration error: {str(e)}"
-    
+            # If email fails, we print OTP to logs so you can still register
+            print(f"!!! EMAIL FAILED. OTP FOR {un} IS: {otp}")
+            return f"Email Error: {str(e)}. Check Render Logs for the OTP to continue."
+
     return render_template("auth/register.html")
 
 @app.route("/verify-email", methods=["GET", "POST"])
