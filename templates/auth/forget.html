@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>E-Voting Password Recovery</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* BACKGROUND */
+
+body{
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+overflow:hidden;
+}
+
+/* ANIMATED CIRCLES */
+
+body::before{
+content:"";
+position:absolute;
+width:600px;
+height:600px;
+background:rgba(255,255,255,0.05);
+border-radius:50%;
+top:-200px;
+left:-200px;
+animation:move 8s infinite alternate;
+}
+
+body::after{
+content:"";
+position:absolute;
+width:500px;
+height:500px;
+background:rgba(255,255,255,0.05);
+border-radius:50%;
+bottom:-150px;
+right:-150px;
+animation:move 10s infinite alternate;
+}
+
+@keyframes move{
+0%{transform:translateY(0);}
+100%{transform:translateY(60px);}
+}
+
+/* CARD */
+
+.forgot-box{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:340px;
+
+text-align:center;
+
+border:1px solid rgba(255,255,255,0.2);
+
+}
+
+/* HEADING */
+
+h2{
+color:white;
+margin-bottom:20px;
+}
+
+/* TEXT */
+
+p{
+color:#ddd;
+font-size:14px;
+margin-bottom:20px;
+}
+
+/* INPUT */
+
+input{
+
+width:100%;
+
+padding:12px;
+
+margin-bottom:15px;
+
+border:none;
+
+border-radius:6px;
+
+outline:none;
+
+font-size:14px;
+
+}
+
+/* BUTTON */
+
+button{
+
+width:100%;
+
+padding:12px;
+
+border:none;
+
+border-radius:6px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+color:white;
+
+font-size:16px;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+button:hover{
+
+transform:scale(1.05);
+
+box-shadow:0 8px 20px rgba(0,114,255,0.6);
+
+}
+
+/* LINK */
+
+a{
+
+display:block;
+
+margin-top:18px;
+
+color:white;
+
+text-decoration:none;
+
+font-size:14px;
+
+}
+
+a:hover{
+text-decoration:underline;
+}
+
+/* ICON */
+
+.logo{
+font-size:40px;
+margin-bottom:10px;
+color:white;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="forgot-box">
+
+<div class="logo">🔐</div>
+
+<h2>Password Recovery</h2>
+
+<p>Enter your email to receive OTP verification</p>
+
+<form method="POST">
+
+<input type="email" name="email" placeholder="Email Address" required>
+
+<button type="submit">Send OTP</button>
+
+</form>
+
+<a href="/login">← Back to Login</a>
+
+</div>
+
+</body>
+
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Add Candidate</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* PAGE BACKGROUND */
+
+body{
+min-height:100vh;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+justify-content:center;
+align-items:center;
+color:white;
+}
+
+/* FORM CARD */
+
+.form-card{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:420px;
+
+border:1px solid rgba(255,255,255,0.2);
+
+}
+
+/* TITLE */
+
+h2{
+text-align:center;
+margin-bottom:25px;
+}
+
+/* LABEL */
+
+label{
+font-size:14px;
+}
+
+/* INPUT FIELDS */
+
+input,
+textarea{
+
+width:100%;
+
+padding:10px;
+
+margin-top:6px;
+
+margin-bottom:15px;
+
+border:none;
+
+border-radius:6px;
+
+outline:none;
+
+font-size:14px;
+
+}
+
+/* TEXTAREA */
+
+textarea{
+height:100px;
+resize:none;
+}
+
+/* BUTTON */
+
+button{
+
+width:100%;
+
+padding:12px;
+
+border:none;
+
+border-radius:6px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+color:white;
+
+font-size:16px;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+button:hover{
+
+transform:scale(1.05);
+
+box-shadow:0 8px 20px rgba(0,114,255,0.6);
+
+}
+
+/* BACK BUTTON */
+
+.back{
+
+display:block;
+
+text-align:center;
+
+margin-top:15px;
+
+color:white;
+
+text-decoration:none;
+
+font-size:14px;
+
+}
+
+.back:hover{
+text-decoration:underline;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="form-card">
+
+<h2>➕ Add Candidate</h2>
+
+<form method="POST">
+
+<label>Candidate Name</label>
+<input type="text" name="name" required>
+
+<label>Election ID</label>
+<input type="text" name="election_id" required>
+
+<label>Manifesto</label>
+<textarea name="manifesto" placeholder="Enter candidate manifesto"></textarea>
+
+<button type="submit">Add Candidate</button>
+
+</form>
+
+<a class="back" href="/admin_dashboard">← Back to Admin Dashboard</a>
+
+</div>
+
+</body>
+
+</html>

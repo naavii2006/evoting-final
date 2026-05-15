@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Election Results</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* BACKGROUND */
+
+body{
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+min-height:100vh;
+padding:40px;
+color:white;
+}
+
+/* PAGE TITLE */
+
+h1{
+text-align:center;
+margin-bottom:40px;
+}
+
+/* RESULT SECTION */
+
+.result-card{
+
+background:rgba(255,255,255,0.1);
+
+padding:25px;
+
+margin-bottom:30px;
+
+border-radius:12px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 15px 30px rgba(0,0,0,0.4);
+
+border:1px solid rgba(255,255,255,0.2);
+
+}
+
+/* ELECTION TITLE */
+
+.result-card h2{
+margin-bottom:15px;
+}
+
+/* TABLE */
+
+table{
+
+width:100%;
+
+border-collapse:collapse;
+
+background:rgba(255,255,255,0.05);
+
+border-radius:10px;
+
+overflow:hidden;
+
+}
+
+/* HEADER */
+
+th{
+
+background:rgba(0,0,0,0.4);
+
+padding:12px;
+
+text-align:left;
+
+}
+
+/* DATA */
+
+td{
+
+padding:10px;
+
+border-bottom:1px solid rgba(255,255,255,0.1);
+
+}
+
+/* HOVER */
+
+tr:hover{
+background:rgba(255,255,255,0.08);
+}
+
+/* VOTE COUNT */
+
+.vote-count{
+font-weight:600;
+color:#00c6ff;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<h1>🏆 Election Results (Admin Only)</h1>
+
+{% for election, candidates in elections.items() %}
+
+<div class="result-card">
+
+<h2>{{ election }}</h2>
+
+<table>
+
+<tr>
+<th>Candidate</th>
+<th>Manifesto</th>
+<th>Votes</th>
+</tr>
+
+{% for c in candidates %}
+
+<tr>
+<td>{{ c["candidate_name"] }}</td>
+<td>{{ c["manifesto"] }}</td>
+<td class="vote-count">{{ c["vote_count"] }}</td>
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+
+{% endfor %}
+
+</body>
+
+</html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Manage Candidates</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* PAGE BACKGROUND */
+
+body{
+min-height:100vh;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+justify-content:center;
+align-items:center;
+color:white;
+}
+
+/* ADMIN PANEL */
+
+.panel{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:800px;
+
+border:1px solid rgba(255,255,255,0.2);
+
+}
+
+/* TITLE */
+
+h2{
+text-align:center;
+margin-bottom:25px;
+}
+
+/* TABLE */
+
+table{
+
+width:100%;
+
+border-collapse:collapse;
+
+background:rgba(255,255,255,0.05);
+
+border-radius:10px;
+
+overflow:hidden;
+
+}
+
+/* TABLE HEADER */
+
+th{
+
+background:rgba(0,0,0,0.4);
+
+padding:12px;
+
+text-align:left;
+
+font-weight:500;
+
+}
+
+/* TABLE DATA */
+
+td{
+
+padding:10px;
+
+border-bottom:1px solid rgba(255,255,255,0.1);
+
+}
+
+/* ROW HOVER */
+
+tr:hover{
+background:rgba(255,255,255,0.08);
+}
+
+/* STATUS */
+
+.approved{
+color:#4cff6a;
+font-weight:500;
+}
+
+.pending{
+color:#ffc107;
+font-weight:500;
+}
+
+/* APPROVE BUTTON */
+
+.approve-btn{
+
+padding:6px 14px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+border-radius:5px;
+
+text-decoration:none;
+
+color:white;
+
+font-size:13px;
+
+transition:0.3s;
+
+}
+
+.approve-btn:hover{
+
+transform:scale(1.05);
+
+box-shadow:0 5px 15px rgba(0,114,255,0.5);
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="panel">
+
+<h2>⚙ Manage Candidates</h2>
+
+<table>
+
+<tr>
+<th>ID</th>
+<th>Name</th>
+<th>Election</th>
+<th>Status</th>
+<th>Action</th>
+</tr>
+
+{% for c in candidates %}
+
+<tr>
+
+<td>{{c["id"]}}</td>
+<td>{{c["name"]}}</td>
+<td>{{c["title"]}}</td>
+
+<td>
+{% if c["approved"] == 1 %}
+<span class="approved">Approved</span>
+{% else %}
+<span class="pending">Pending</span>
+{% endif %}
+</td>
+
+<td>
+
+{% if c["approved"] == 0 %}
+
+<a class="approve-btn" href="/approve_candidate/{{c['id']}}">
+Approve
+</a>
+
+{% else %}
+—
+{% endif %}
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+
+</body>
+</html>

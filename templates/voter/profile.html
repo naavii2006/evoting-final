@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>User Profile</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* BACKGROUND */
+
+body{
+min-height:100vh;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+justify-content:center;
+align-items:center;
+color:white;
+}
+
+/* PROFILE CARD */
+
+.profile-card{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:380px;
+
+border:1px solid rgba(255,255,255,0.2);
+
+text-align:center;
+
+}
+
+/* TITLE */
+
+h2{
+margin-bottom:25px;
+}
+
+/* PROFILE INFO */
+
+.info{
+background:rgba(255,255,255,0.15);
+padding:15px;
+border-radius:8px;
+margin-bottom:12px;
+text-align:left;
+}
+
+/* LABEL */
+
+.label{
+font-size:13px;
+color:#ccc;
+}
+
+/* VALUE */
+
+.value{
+font-size:16px;
+font-weight:500;
+}
+
+/* BUTTON */
+
+.back-btn{
+
+display:inline-block;
+
+margin-top:20px;
+
+padding:10px 25px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+border-radius:6px;
+
+text-decoration:none;
+
+color:white;
+
+transition:0.3s;
+
+}
+
+.back-btn:hover{
+
+transform:scale(1.05);
+
+box-shadow:0 8px 20px rgba(0,114,255,0.6);
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="profile-card">
+
+<h2>👤 User Profile</h2>
+
+<div class="info">
+<div class="label">Full Name</div>
+<div class="value">{{user["name"]}}</div>
+</div>
+
+<div class="info">
+<div class="label">Username</div>
+<div class="value">{{user["username"]}}</div>
+</div>
+
+<div class="info">
+<div class="label">Email</div>
+<div class="value">{{user["email"]}}</div>
+</div>
+
+<a class="back-btn" href="/dashboard">Back to Dashboard</a>
+
+</div>
+
+</body>
+
+</html>

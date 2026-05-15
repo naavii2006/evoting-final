@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Vote Successful</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* BACKGROUND */
+
+body{
+min-height:100vh;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+justify-content:center;
+align-items:center;
+color:white;
+}
+
+/* SUCCESS CARD */
+
+.success-box{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:380px;
+
+text-align:center;
+
+border:1px solid rgba(255,255,255,0.2);
+
+}
+
+/* SUCCESS ICON */
+
+.icon{
+
+font-size:60px;
+
+margin-bottom:15px;
+
+}
+
+/* TITLE */
+
+h2{
+margin-bottom:10px;
+}
+
+/* MESSAGE */
+
+.message{
+color:#ddd;
+margin-bottom:25px;
+}
+
+/* BUTTON */
+
+.dashboard-btn{
+
+display:inline-block;
+
+padding:12px 25px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+border-radius:6px;
+
+text-decoration:none;
+
+color:white;
+
+transition:0.3s;
+
+}
+
+.dashboard-btn:hover{
+
+transform:scale(1.05);
+
+box-shadow:0 8px 20px rgba(0,114,255,0.6);
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="success-box">
+
+<div class="icon">✅</div>
+
+<h2>Vote Submitted Successfully</h2>
+
+<p class="message">
+Thank you for participating in the election.  
+Your vote has been securely recorded.
+</p>
+
+<a class="dashboard-btn" href="/dashboard">
+Back to Dashboard
+</a>
+
+</div>
+
+</body>
+
+</html>

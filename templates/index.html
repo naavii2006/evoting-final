@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- CRUCIAL: This makes it look professional on mobile devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Voting System</title>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* BACKGROUND */
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            padding: 20px;
+        }
+
+        /* MAIN CARD */
+        .home {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 15px;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px); /* Safari support */
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* LOGO ANIMATION */
+        .logo {
+            font-size: 60px;
+            margin-bottom: 15px;
+            display: inline-block;
+            transition: transform 0.5s ease;
+        }
+        
+        .home:hover .logo {
+            transform: scale(1.1) rotate(10deg);
+        }
+
+        /* TITLE */
+        h1 {
+            margin-bottom: 10px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .subtitle {
+            color: #ccc;
+            margin-bottom: 35px;
+            font-size: 14px;
+            font-weight: 300;
+        }
+
+        /* BUTTONS */
+        .btn {
+            display: block;
+            padding: 14px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: white;
+            font-weight: 500;
+            background: linear-gradient(to right, #00c6ff, #0072ff);
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 114, 255, 0.5);
+            filter: brightness(1.1);
+        }
+
+        /* ADMIN BUTTON (Red Gradient) */
+        .btn.admin {
+            background: linear-gradient(to right, #ff512f, #dd2476);
+            margin-top: 25px;
+        }
+
+        .btn.admin:hover {
+            box-shadow: 0 8px 20px rgba(255, 82, 47, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="home">
+        <div class="logo">🗳️</div>
+        <h1>E-Voting System</h1>
+        <p class="subtitle">Secure Online Voting Platform</p>
+
+        <a href="/register" class="btn">Register</a>
+        <a href="/login" class="btn">User Login</a>
+        <a href="/admin" class="btn admin">Admin Panel</a>
+    </div>
+
+    <script>
+        /**
+         * NGROK BYPASS SCRIPT
+         * This ensures that any background data requests (fetch) 
+         * automatically include the header to skip the ngrok warning.
+         */
+        (function() {
+            const originalFetch = window.fetch;
+            window.fetch = function() {
+                let args = arguments;
+                if (args[1] === undefined) args[1] = {};
+                if (args[1].headers === undefined) args[1].headers = {};
+                
+                // Set the bypass header
+                if (args[1].headers instanceof Headers) {
+                    args[1].headers.append('ngrok-skip-browser-warning', 'true');
+                } else {
+                    args[1].headers['ngrok-skip-browser-warning'] = 'true';
+                }
+                
+                return originalFetch.apply(this, args);
+            };
+        })();
+
+        console.log("Voting System UI Loaded & Ngrok Bypass Active.");
+    </script>
+</body>
+</html>

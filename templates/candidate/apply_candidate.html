@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Apply as Candidate</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* BACKGROUND */
+
+body{
+min-height:100vh;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+justify-content:center;
+align-items:center;
+color:white;
+overflow:hidden;
+}
+
+/* animated shapes */
+
+body::before{
+content:"";
+position:absolute;
+width:500px;
+height:500px;
+background:rgba(255,255,255,0.05);
+border-radius:50%;
+top:-150px;
+left:-150px;
+}
+
+body::after{
+content:"";
+position:absolute;
+width:400px;
+height:400px;
+background:rgba(255,255,255,0.05);
+border-radius:50%;
+bottom:-120px;
+right:-120px;
+}
+
+/* APPLICATION CARD */
+
+.apply-box{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:420px;
+
+border:1px solid rgba(255,255,255,0.2);
+
+position:relative;
+
+}
+
+/* TITLE */
+
+h2{
+text-align:center;
+margin-bottom:25px;
+font-weight:600;
+letter-spacing:1px;
+}
+
+/* LABEL */
+
+label{
+font-size:14px;
+color:#e0e0e0;
+}
+
+/* INPUTS */
+
+select,
+textarea{
+
+width:100%;
+
+padding:12px;
+
+margin-top:8px;
+
+margin-bottom:18px;
+
+border:none;
+
+border-radius:8px;
+
+outline:none;
+
+font-size:14px;
+
+background:rgba(255,255,255,0.9);
+
+color:#333;
+
+}
+
+/* TEXTAREA */
+
+textarea{
+height:120px;
+resize:none;
+}
+
+/* BUTTON */
+
+button{
+
+width:100%;
+
+padding:12px;
+
+border:none;
+
+border-radius:8px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+color:white;
+
+font-size:16px;
+
+font-weight:500;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+button:hover{
+
+transform:translateY(-2px);
+
+box-shadow:0 10px 25px rgba(0,114,255,0.6);
+
+}
+
+/* NOTE */
+
+.note{
+font-size:13px;
+color:#ddd;
+margin-top:15px;
+text-align:center;
+line-height:1.4;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="apply-box">
+
+<h2>📄 Apply as Candidate</h2>
+
+<form method="POST" action="/apply_candidate">
+
+<label>Select Election</label>
+
+<select name="election_id">
+
+{% for election in elections %}
+
+<option value="{{election['id']}}">{{election['title']}}</option>
+
+{% endfor %}
+
+</select>
+
+<label>Manifesto</label>
+
+<textarea name="manifesto" placeholder="Write your manifesto here..."></textarea>
+
+<button type="submit">Submit Application</button>
+
+</form>
+
+<p class="note">
+Your application will be reviewed by the admin before approval.
+</p>
+
+</div>
+
+</body>
+
+</html>

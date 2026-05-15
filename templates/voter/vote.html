@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Cast Your Vote</title>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+/* PAGE BACKGROUND */
+
+body{
+min-height:100vh;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+justify-content:center;
+align-items:center;
+color:white;
+}
+
+/* VOTING PANEL */
+
+.vote-panel{
+
+background:rgba(255,255,255,0.1);
+
+padding:40px;
+
+border-radius:15px;
+
+backdrop-filter:blur(15px);
+
+box-shadow:0 20px 40px rgba(0,0,0,0.4);
+
+width:420px;
+
+border:1px solid rgba(255,255,255,0.2);
+
+}
+
+/* TITLE */
+
+h2{
+text-align:center;
+margin-bottom:25px;
+}
+
+/* CANDIDATE LIST */
+
+.candidate{
+
+display:flex;
+
+align-items:center;
+
+background:rgba(255,255,255,0.15);
+
+padding:12px;
+
+margin-bottom:12px;
+
+border-radius:8px;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+.candidate:hover{
+
+background:rgba(255,255,255,0.25);
+
+transform:translateX(5px);
+
+}
+
+/* RADIO */
+
+.candidate input{
+
+margin-right:12px;
+
+transform:scale(1.2);
+
+}
+
+/* BUTTON */
+
+button{
+
+width:100%;
+
+margin-top:20px;
+
+padding:12px;
+
+border:none;
+
+border-radius:6px;
+
+background:linear-gradient(to right,#00c6ff,#0072ff);
+
+color:white;
+
+font-size:16px;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+button:hover{
+
+transform:scale(1.05);
+
+box-shadow:0 8px 20px rgba(0,114,255,0.6);
+
+}
+
+/* NOTE */
+
+.note{
+font-size:13px;
+color:#ddd;
+margin-top:15px;
+text-align:center;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="vote-panel">
+
+<h2>🗳 Cast Your Vote</h2>
+
+<form method="POST">
+
+{% for candidate in candidates %}
+
+<label class="candidate">
+
+<input type="radio" name="candidate_id" value="{{candidate['id']}}" required>
+
+{{candidate["name"]}}
+
+</label>
+
+{% endfor %}
+
+<button type="submit">Submit Vote</button>
+
+</form>
+
+<p class="note">Your vote is confidential and can be cast only once.</p>
+
+</div>
+
+</body>
+
+</html>
