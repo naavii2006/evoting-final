@@ -113,7 +113,7 @@ def send_verification_email(to_email, otp):
         return False
     
     try:
-        from_email = os.environ.get("FROM_EMAIL", "noreply@evoting.com")
+        from_email = os.environ.get("FROM_EMAIL", "lightphoton3108@gmail.com")
         message = Mail(
             from_email=from_email,
             to_emails=to_email,
