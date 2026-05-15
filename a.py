@@ -6,11 +6,16 @@ import time
 from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import DictCursor
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+
+try:
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail
+    SENDGRID_AVAILABLE = True
+except ImportError:
+    SENDGRID_AVAILABLE = False
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key-change-this")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key")
 app.permanent_session_lifetime = timedelta(minutes=10)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -27,7 +32,6 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Create tables if they don't exist
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users(
             id SERIAL PRIMARY KEY,
@@ -40,20 +44,12 @@ def init_db():
         )
     """)
     
-    # Add is_verified column if it doesn't exist - using separate transaction
     try:
         cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
         conn.commit()
-        print("✅ Added is_verified column to users table")
-    except Exception as e:
-        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
-            print("✅ is_verified column already exists")
-            conn.rollback()  # Rollback the failed ALTER TABLE
-        else:
-            print(f"Note: {e}")
-            conn.rollback()
+    except:
+        conn.rollback()
     
-    # Create remaining tables
     cur.execute("""
         CREATE TABLE IF NOT EXISTS elections(
             id SERIAL PRIMARY KEY,
@@ -98,7 +94,6 @@ def init_db():
     
     conn.commit()
     
-    # Create admin user if not exists
     cur.execute("SELECT * FROM users WHERE username = %s", ("admin",))
     if not cur.fetchone():
         admin_password = generate_password_hash("admin123")
@@ -107,22 +102,23 @@ def init_db():
             VALUES (%s, %s, %s, %s, %s, %s)
         """, ("Administrator", "admin", "admin@example.com", admin_password, "admin", True))
         conn.commit()
-        print("✅ Admin user created")
     
     cur.close()
     conn.close()
-    print("✅ Database initialized successfully")
 
-# Initialize database
 init_db()
 
 def send_verification_email(to_email, otp):
+    if not SENDGRID_AVAILABLE or not SENDGRID_API_KEY:
+        return False
+    
     try:
+        from_email = os.environ.get("FROM_EMAIL", "noreply@evoting.com")
         message = Mail(
-            from_email='noreply@evoting-system.com',
+            from_email=from_email,
             to_emails=to_email,
-            subject='Verify Your Email - E-Voting System',
-            html_content=f'<strong>Your OTP is: {otp}</strong><br>Valid for 5 minutes'
+            subject='Verify Your Email',
+            html_content=f'Your OTP is: {otp}'
         )
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         response = sg.send(message)
@@ -136,10 +132,7 @@ def save_verification_code(email, code):
     cur = conn.cursor()
     cur.execute("DELETE FROM verification_codes WHERE email = %s", (email,))
     expires_at = datetime.now() + timedelta(minutes=5)
-    cur.execute("""
-        INSERT INTO verification_codes (email, code, expires_at)
-        VALUES (%s, %s, %s)
-    """, (email, code, expires_at))
+    cur.execute("INSERT INTO verification_codes (email, code, expires_at) VALUES (%s, %s, %s)", (email, code, expires_at))
     conn.commit()
     cur.close()
     conn.close()
@@ -147,11 +140,7 @@ def save_verification_code(email, code):
 def verify_code(email, code):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT * FROM verification_codes 
-        WHERE email = %s AND code = %s AND expires_at > NOW()
-        ORDER BY created_at DESC LIMIT 1
-    """, (email, code))
+    cur.execute("SELECT * FROM verification_codes WHERE email = %s AND code = %s AND expires_at > NOW()", (email, code))
     result = cur.fetchone()
     cur.close()
     conn.close()
@@ -164,38 +153,53 @@ def home():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        un = request.form.get("username")
-        em = request.form.get("email")
-        pw = request.form.get("password")
+        name = request.form.get("name")
+        username = request.form.get("username")
+        email = request.form.get("email")
+        password = request.form.get("password")
+        confirm = request.form.get("confirm_password")
         
-        # 1. DB Check
-        exists = execute_query("SELECT id FROM users WHERE username = ? OR email = ?", (un, em), fetch_one=True)
-        if exists: return "User already exists"
-
-        # 2. Setup Session
-        otp = str(random.randint(1000, 9999))
+        if password != confirm:
+            return "Passwords do not match"
+        
+        if len(password) < 6:
+            return "Password must be at least 6 characters"
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return "Username already exists"
+        
+        cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return "Email already exists"
+        
+        cur.close()
+        conn.close()
+        
+        hashed_password = generate_password_hash(password)
+        
         session["temp_user"] = {
-            "name": request.form.get("name"), "username": un, "email": em,
-            "password": generate_password_hash(pw)
+            "name": name,
+            "username": username,
+            "email": email,
+            "password": hashed_password
         }
-        session["reg_otp"] = otp
-
-        # 3. GMAIL SMTP (Replaces SendGrid)
-        try:
-            e_user = os.environ.get("EMAIL_USER")
-            e_pass = os.environ.get("EMAIL_PASS")
-            
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-                server.login(e_user, e_pass)
-                server.sendmail(e_user, em, f"Subject: OTP\n\nYour OTP is {otp}")
-            
-            return redirect("/verify_register")
-            
-        except Exception as e:
-            # If email fails, we print OTP to logs so you can still register
-            print(f"!!! EMAIL FAILED. OTP FOR {un} IS: {otp}")
-            return f"Email Error: {str(e)}. Check Render Logs for the OTP to continue."
-
+        
+        otp = str(random.randint(100000, 999999))
+        save_verification_code(email, otp)
+        
+        if send_verification_email(email, otp):
+            return redirect("/verify-email")
+        else:
+            return "Failed to send verification email. Please try again."
+    
     return render_template("auth/register.html")
 
 @app.route("/verify-email", methods=["GET", "POST"])
@@ -237,36 +241,31 @@ def verify_email():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        try:
-            username = request.form.get("username")
-            password = request.form.get("password")
+        username = request.form.get("username")
+        password = request.form.get("password")
+        
+        if username == "admin" and password == "admin123":
+            session["username"] = "admin"
+            session["role"] = "admin"
+            return redirect("/admin")
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id, username, password, role, is_verified FROM users WHERE username = %s", (username,))
+        user = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if user and check_password_hash(user[2], password):
+            if not user[4]:
+                return "Please verify your email before logging in."
             
-            if username == "admin" and password == "admin123":
-                session["username"] = "admin"
-                session["role"] = "admin"
-                return redirect("/admin")
-            
-            conn = get_db_connection()
-            cur = conn.cursor()
-            
-            cur.execute("SELECT id, username, password, role, is_verified FROM users WHERE username = %s", (username,))
-            user = cur.fetchone()
-            cur.close()
-            conn.close()
-            
-            if user and check_password_hash(user[2], password):
-                if not user[4]:
-                    return "Please verify your email before logging in."
-                
-                session["username"] = user[1]
-                session["role"] = user[3]
-                session["user_id"] = user[0]
-                return redirect("/dashboard")
-            
-            return "Invalid username or password"
-            
-        except Exception as e:
-            return f"Login error: {str(e)}"
+            session["username"] = user[1]
+            session["role"] = user[3]
+            session["user_id"] = user[0]
+            return redirect("/dashboard")
+        
+        return "Invalid username or password"
     
     return render_template("auth/login.html")
 
@@ -424,7 +423,7 @@ def vote(election_id):
             cur.execute("""
                 INSERT INTO votes (user_id, election_id, candidate_id, timestamp)
                 VALUES (%s, %s, %s, %s)
-            """, (user_id, election_id, candidate_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            """, (user_id, election_id, candidate_id, datetime.now()))
             conn.commit()
         except Exception:
             cur.close()
@@ -566,7 +565,7 @@ def health():
         cur.execute("SELECT 1")
         cur.close()
         conn.close()
-        return jsonify({"status": "healthy", "database": "Neon.tech PostgreSQL", "email_service": "SendGrid"})
+        return jsonify({"status": "healthy", "database": "Neon.tech PostgreSQL"})
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
