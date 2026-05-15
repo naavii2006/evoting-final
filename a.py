@@ -2,7 +2,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, session, jsonify
 import os
 import random
-import smtplib
 import time
 from datetime import datetime, timedelta
 import psycopg2
@@ -254,21 +253,33 @@ def verify_email():
         
         if verify_code(email, otp):
             user = session["temp_user"]
-            result, conn = execute_query("""
-                INSERT INTO users (name, username, email, password, role, is_verified)
-                VALUES (?, ?, ?, ?, ?, ?)
-                RETURNING id
-            """, (user["name"], user["username"], user["email"], user["password"], "voter", True), commit=True)
             
-            user_id = result[0]
-            conn.close()
+            # Direct database insertion without execute_query to avoid issues
+            conn = get_db_connection()
+            cur = conn.cursor()
             
-            session["username"] = user["username"]
-            session["role"] = "voter"
-            session["user_id"] = user_id
-            session.pop("temp_user", None)
-            
-            return redirect("/dashboard")
+            try:
+                cur.execute("""
+                    INSERT INTO users (name, username, email, password, role, is_verified)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (user["name"], user["username"], user["email"], user["password"], "voter", True))
+                
+                user_id = cur.fetchone()[0]
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                session["username"] = user["username"]
+                session["role"] = "voter"
+                session["user_id"] = user_id
+                session.pop("temp_user", None)
+                
+                return redirect("/dashboard")
+            except Exception as e:
+                cur.close()
+                conn.close()
+                return f"Error creating user: {str(e)}"
         else:
             return "Invalid or expired OTP. Please try again."
     
