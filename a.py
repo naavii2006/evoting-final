@@ -254,7 +254,7 @@ def verify_email():
         if verify_code(email, otp):
             user = session["temp_user"]
             
-            # Direct database insertion without execute_query to avoid issues
+            # Direct database insertion
             conn = get_db_connection()
             cur = conn.cursor()
             
@@ -323,12 +323,22 @@ def dashboard():
     
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE username = %s", (session["username"],))
-    user = cur.fetchone()
+    cur.execute("SELECT name, username, email, role FROM users WHERE username = %s", (session["username"],))
+    user_data = cur.fetchone()
     cur.close()
     conn.close()
     
-    return render_template("voter/dashboard.html", user=user)
+    if user_data:
+        # Convert tuple to dictionary for template
+        user = {
+            "name": user_data[0],
+            "username": user_data[1],
+            "email": user_data[2],
+            "role": user_data[3]
+        }
+        return render_template("voter/dashboard.html", user=user)
+    else:
+        return redirect("/login")
 
 @app.route("/profile")
 def profile():
@@ -337,12 +347,22 @@ def profile():
     
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE username = %s", (session["username"],))
-    user = cur.fetchone()
+    cur.execute("SELECT name, username, email, role, created_at FROM users WHERE username = %s", (session["username"],))
+    user_data = cur.fetchone()
     cur.close()
     conn.close()
     
-    return render_template("voter/profile.html", user=user)
+    if user_data:
+        user = {
+            "name": user_data[0],
+            "username": user_data[1],
+            "email": user_data[2],
+            "role": user_data[3],
+            "created_at": user_data[4]
+        }
+        return render_template("voter/profile.html", user=user)
+    else:
+        return redirect("/login")
 
 @app.route("/elections")
 def elections():
@@ -375,12 +395,20 @@ def apply():
     
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM elections")
+    cur.execute("SELECT id, title FROM elections")
     elections_list = cur.fetchall()
     cur.close()
     conn.close()
     
-    return render_template("candidate/apply_candidate.html", elections=elections_list)
+    # Convert to list of dicts for template
+    elections = []
+    for e in elections_list:
+        elections.append({
+            "id": e[0],
+            "title": e[1]
+        })
+    
+    return render_template("candidate/apply_candidate.html", elections=elections)
 
 @app.route("/apply_candidate", methods=["POST"])
 def apply_candidate():
@@ -482,7 +510,7 @@ def vote(election_id):
         return "Vote submitted successfully"
     
     cur.execute("""
-        SELECT candidates.*, users.name
+        SELECT candidates.id, users.name, candidates.manifesto
         FROM candidates
         JOIN users ON candidates.user_id = users.id
         WHERE election_id = %s AND approved = 1
@@ -492,7 +520,16 @@ def vote(election_id):
     cur.close()
     conn.close()
     
-    return render_template("elections/vote.html", candidates=candidates_list)
+    # Convert to list of dicts for template
+    candidates = []
+    for c in candidates_list:
+        candidates.append({
+            "id": c[0],
+            "name": c[1],
+            "manifesto": c[2]
+        })
+    
+    return render_template("elections/vote.html", candidates=candidates, election_id=election_id)
 
 @app.route("/admin")
 def admin():
@@ -542,6 +579,7 @@ def manage_candidates():
         FROM candidates
         JOIN users ON candidates.user_id = users.id
         JOIN elections ON candidates.election_id = elections.id
+        WHERE candidates.approved = 0
     """)
     
     candidates_list = cur.fetchall()
@@ -576,14 +614,14 @@ def results():
         SELECT 
             elections.title AS election_title,
             users.name AS candidate_name,
-            candidates.manifesto,
             COUNT(votes.id) AS vote_count
         FROM candidates
         JOIN users ON candidates.user_id = users.id
         JOIN elections ON candidates.election_id = elections.id
         LEFT JOIN votes ON votes.candidate_id = candidates.id
-        GROUP BY candidates.id, elections.title, users.name, candidates.manifesto, elections.id
-        ORDER BY elections.id
+        WHERE candidates.approved = 1
+        GROUP BY elections.title, users.name, candidates.id
+        ORDER BY elections.id, vote_count DESC
     """)
     
     rows = cur.fetchall()
@@ -595,7 +633,10 @@ def results():
         election = r[0]
         if election not in elections_dict:
             elections_dict[election] = []
-        elections_dict[election].append(r)
+        elections_dict[election].append({
+            "candidate_name": r[1],
+            "vote_count": r[2]
+        })
     
     return render_template("admin/results.html", elections=elections_dict)
 
