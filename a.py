@@ -667,35 +667,57 @@ def results():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("""
-        SELECT 
-            elections.title AS election_title,
-            users.name AS candidate_name,
-            COUNT(votes.id) AS vote_count
-        FROM candidates
-        JOIN users ON candidates.user_id = users.id
-        JOIN elections ON candidates.election_id = elections.id
-        LEFT JOIN votes ON votes.candidate_id = candidates.id
-        WHERE candidates.approved = 1
-        GROUP BY elections.title, users.name, candidates.id
-        ORDER BY elections.id, vote_count DESC
-    """)
-    
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    elections_dict = {}
-    for r in rows:
-        election = r[0]
-        if election not in elections_dict:
-            elections_dict[election] = []
-        elections_dict[election].append({
-            "candidate_name": r[1],
-            "vote_count": r[2]
-        })
-    
-    return render_template("admin/results.html", elections=elections_dict)
+    try:
+        # First, check if there are any elections
+        cur.execute("SELECT COUNT(*) FROM elections")
+        election_count = cur.fetchone()[0]
+        
+        if election_count == 0:
+            cur.close()
+            conn.close()
+            return render_template("admin/results.html", elections={}, message="No elections found")
+        
+        # Get results with proper error handling
+        cur.execute("""
+            SELECT 
+                elections.id,
+                elections.title AS election_title,
+                users.name AS candidate_name,
+                COUNT(votes.id) AS vote_count
+            FROM elections
+            LEFT JOIN candidates ON candidates.election_id = elections.id AND candidates.approved = 1
+            LEFT JOIN users ON candidates.user_id = users.id
+            LEFT JOIN votes ON votes.candidate_id = candidates.id
+            GROUP BY elections.id, elections.title, users.name, candidates.id
+            ORDER BY elections.id, vote_count DESC
+        """)
+        
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        # Organize results by election
+        elections_dict = {}
+        for row in rows:
+            election_id = row[0]
+            election_title = row[1]
+            candidate_name = row[2]
+            vote_count = row[3] if row[3] is not None else 0
+            
+            if election_title not in elections_dict:
+                elections_dict[election_title] = []
+            
+            if candidate_name:  # Only add if there's a candidate
+                elections_dict[election_title].append({
+                    "candidate_name": candidate_name,
+                    "vote_count": vote_count
+                })
+        
+        return render_template("admin/results.html", elections=elections_dict)
+        
+    except Exception as e:
+        conn.close()
+        return f"Error loading results: {str(e)}", 500
 
 @app.route("/logout")
 def logout():
