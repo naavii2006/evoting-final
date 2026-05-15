@@ -153,54 +153,62 @@ def home():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        name = request.form.get("name")
-        username = request.form.get("username")
-        email = request.form.get("email")
-        password = request.form.get("password")
-        confirm = request.form.get("confirm_password")
+        un = request.form.get("username")
+        em = request.form.get("email")
+        pw = request.form.get("password")
+        nm = request.form.get("name")
         
-        if password != confirm:
+        if pw != request.form.get("confirm_password"):
             return "Passwords do not match"
-        
-        if len(password) < 6:
-            return "Password must be at least 6 characters"
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute("SELECT id FROM users WHERE username = %s", (username,))
-        if cur.fetchone():
-            cur.close()
-            conn.close()
-            return "Username already exists"
-        
-        cur.execute("SELECT id FROM users WHERE email = %s", (email,))
-        if cur.fetchone():
-            cur.close()
-            conn.close()
-            return "Email already exists"
-        
-        cur.close()
-        conn.close()
-        
-        hashed_password = generate_password_hash(password)
-        
-        session["temp_user"] = {
-            "name": name,
-            "username": username,
-            "email": email,
-            "password": hashed_password
-        }
-        
-        otp = str(random.randint(100000, 999999))
-        save_verification_code(email, otp)
-        
-        if send_verification_email(email, otp):
-            return redirect("/verify-email")
-        else:
-            return "Failed to send verification email. Please try again."
-    
+
+        try:
+            exists = execute_query("SELECT id FROM users WHERE username = ? OR email = ?", (un, em), fetch_one=True)
+            if exists: return "Username or Email already exists"
+            
+            otp = str(random.randint(1000, 9999))
+            session["temp_user"] = {
+                "name": nm, "username": un, "email": em,
+                "password": generate_password_hash(pw)
+            }
+            session["reg_otp"] = otp
+
+            # SMTP Gmail
+            try:
+                e_user = os.environ.get("EMAIL_USER")
+                e_pass = os.environ.get("EMAIL_PASS").replace(" ", "")
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+                    server.login(e_user, e_pass)
+                    server.sendmail(e_user, em, f"Subject: OTP\n\nYour OTP is {otp}")
+            except Exception as mail_err:
+                # Log the OTP so you can find it in Render Dashboard -> Logs
+                print(f"!!! MAIL FAILED. OTP FOR {un} IS: {otp}")
+                # We still redirect so you can enter the OTP from the logs!
+                return render_template("auth/verify_register.html", msg="Email failed, but check logs for OTP.")
+
+            return redirect("/verify_register")
+        except Exception as e:
+            return f"System Error: {str(e)}"
+
     return render_template("auth/register.html")
+
+@app.route("/verify_register", methods=["GET", "POST"])
+def verify_register():
+    # If the session was lost, go back to register
+    if "reg_otp" not in session:
+        return "Session expired. Please register again."
+
+    if request.method == "POST":
+        if request.form.get("otp") == session["reg_otp"]:
+            u = session["temp_user"]
+            execute_query("""INSERT INTO users (name, username, email, password, role, created_at) 
+                          VALUES (?, ?, ?, ?, ?, ?)""",
+                          (u['name'], u['username'], u['email'], u['password'], 'voter', datetime.now().strftime("%Y-%m-%d")), 
+                          commit=True)
+            session.clear()
+            return redirect("/login")
+        return "Incorrect OTP. Check Render logs if you didn't get an email."
+        
+    return render_template("auth/verify_register.html")
 
 @app.route("/verify-email", methods=["GET", "POST"])
 def verify_email():
