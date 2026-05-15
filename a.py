@@ -40,16 +40,20 @@ def init_db():
         )
     """)
     
-    # Add is_verified column if it doesn't exist
+    # Add is_verified column if it doesn't exist - using separate transaction
     try:
         cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+        conn.commit()
         print("✅ Added is_verified column to users table")
     except Exception as e:
         if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
             print("✅ is_verified column already exists")
+            conn.rollback()  # Rollback the failed ALTER TABLE
         else:
             print(f"Note: {e}")
+            conn.rollback()
     
+    # Create remaining tables
     cur.execute("""
         CREATE TABLE IF NOT EXISTS elections(
             id SERIAL PRIMARY KEY,
@@ -263,13 +267,6 @@ def login():
             
             conn = get_db_connection()
             cur = conn.cursor()
-            
-            # Check if is_verified column exists, if not add it
-            try:
-                cur.execute("SELECT is_verified FROM users LIMIT 1")
-            except Exception:
-                cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
-                conn.commit()
             
             cur.execute("SELECT id, username, password, role, is_verified FROM users WHERE username = %s", (username,))
             user = cur.fetchone()
