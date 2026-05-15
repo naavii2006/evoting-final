@@ -27,6 +27,7 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
+    # Create tables if they don't exist
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users(
             id SERIAL PRIMARY KEY,
@@ -35,10 +36,19 @@ def init_db():
             email TEXT UNIQUE,
             password TEXT,
             role TEXT DEFAULT 'voter',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_verified BOOLEAN DEFAULT FALSE
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Add is_verified column if it doesn't exist
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+        print("✅ Added is_verified column to users table")
+    except Exception as e:
+        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+            print("✅ is_verified column already exists")
+        else:
+            print(f"Note: {e}")
     
     cur.execute("""
         CREATE TABLE IF NOT EXISTS elections(
@@ -84,6 +94,7 @@ def init_db():
     
     conn.commit()
     
+    # Create admin user if not exists
     cur.execute("SELECT * FROM users WHERE username = %s", ("admin",))
     if not cur.fetchone():
         admin_password = generate_password_hash("admin123")
@@ -92,10 +103,13 @@ def init_db():
             VALUES (%s, %s, %s, %s, %s, %s)
         """, ("Administrator", "admin", "admin@example.com", admin_password, "admin", True))
         conn.commit()
+        print("✅ Admin user created")
     
     cur.close()
     conn.close()
+    print("✅ Database initialized successfully")
 
+# Initialize database
 init_db()
 
 def send_verification_email(to_email, otp):
@@ -249,6 +263,13 @@ def login():
             
             conn = get_db_connection()
             cur = conn.cursor()
+            
+            # Check if is_verified column exists, if not add it
+            try:
+                cur.execute("SELECT is_verified FROM users LIMIT 1")
+            except Exception:
+                cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+                conn.commit()
             
             cur.execute("SELECT id, username, password, role, is_verified FROM users WHERE username = %s", (username,))
             user = cur.fetchone()
