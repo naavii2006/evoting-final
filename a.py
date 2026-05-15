@@ -124,7 +124,8 @@ def init_db():
     
     conn.commit()
     
-    cur.execute("SELECT * FROM users WHERE username = %s", ("admin",))
+    # Create or update admin user
+    cur.execute("SELECT id FROM users WHERE username = %s", ("admin",))
     if not cur.fetchone():
         admin_password = generate_password_hash("admin123")
         cur.execute("""
@@ -132,6 +133,16 @@ def init_db():
             VALUES (%s, %s, %s, %s, %s, %s)
         """, ("Administrator", "admin", "admin@example.com", admin_password, "admin", True))
         conn.commit()
+        print("✅ Admin user created with username: admin, password: admin123")
+    else:
+        # Update existing admin to ensure correct password
+        admin_password = generate_password_hash("admin123")
+        cur.execute("""
+            UPDATE users SET password = %s, role = 'admin', is_verified = TRUE 
+            WHERE username = 'admin'
+        """, (admin_password,))
+        conn.commit()
+        print("✅ Admin password reset to: admin123")
     
     cur.close()
     conn.close()
@@ -291,9 +302,11 @@ def login():
         username = request.form.get("username")
         password = request.form.get("password")
         
+        # Admin login - hardcoded as backup
         if username == "admin" and password == "admin123":
             session["username"] = "admin"
             session["role"] = "admin"
+            session["user_id"] = 1
             return redirect("/admin")
         
         conn = get_db_connection()
@@ -372,19 +385,42 @@ def elections():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT * FROM elections")
-    elections_list = cur.fetchall()
+    cur.execute("SELECT id, title, description, candidate_deadline, vote_start, vote_end FROM elections")
+    elections_rows = cur.fetchall()
     
     cur.execute("""
-        SELECT candidates.*, users.name
+        SELECT candidates.id, candidates.user_id, candidates.election_id, candidates.manifesto, candidates.approved, users.name
         FROM candidates
         JOIN users ON candidates.user_id = users.id
         WHERE approved = 1
     """)
-    candidates_list = cur.fetchall()
+    candidates_rows = cur.fetchall()
     
     cur.close()
     conn.close()
+    
+    # Convert to dictionaries for templates
+    elections_list = []
+    for e in elections_rows:
+        elections_list.append({
+            "id": e[0],
+            "title": e[1],
+            "description": e[2],
+            "candidate_deadline": e[3],
+            "vote_start": e[4],
+            "vote_end": e[5]
+        })
+    
+    candidates_list = []
+    for c in candidates_rows:
+        candidates_list.append({
+            "id": c[0],
+            "user_id": c[1],
+            "election_id": c[2],
+            "manifesto": c[3],
+            "approved": c[4],
+            "name": c[5]
+        })
     
     return render_template("voter/elections.html", elections=elections_list, candidates=candidates_list)
 
@@ -429,7 +465,7 @@ def apply_candidate():
         conn.close()
         return "Election not found"
     
-    deadline = datetime.strptime(election[0], "%Y-%m-%d")
+    deadline = datetime.strptime(str(election[0]), "%Y-%m-%d")
     
     if datetime.now() > deadline:
         cur.close()
@@ -475,8 +511,13 @@ def vote(election_id):
     cur.execute("SELECT vote_start, vote_end FROM elections WHERE id = %s", (election_id,))
     election = cur.fetchone()
     
-    vote_start = datetime.strptime(election[0], "%Y-%m-%d")
-    vote_end = datetime.strptime(election[1], "%Y-%m-%d")
+    if not election:
+        cur.close()
+        conn.close()
+        return "Election not found"
+    
+    vote_start = datetime.strptime(str(election[0]), "%Y-%m-%d")
+    vote_end = datetime.strptime(str(election[1]), "%Y-%m-%d")
     
     if datetime.now() < vote_start:
         cur.close()
@@ -489,7 +530,14 @@ def vote(election_id):
         return "Voting has ended"
     
     cur.execute("SELECT id FROM users WHERE username = %s", (session["username"],))
-    user_id = cur.fetchone()[0]
+    user_result = cur.fetchone()
+    
+    if not user_result:
+        cur.close()
+        conn.close()
+        return "User not found"
+    
+    user_id = user_result[0]
     
     if request.method == "POST":
         candidate_id = request.form.get("candidate")
@@ -500,7 +548,7 @@ def vote(election_id):
                 VALUES (%s, %s, %s, %s)
             """, (user_id, election_id, candidate_id, datetime.now()))
             conn.commit()
-        except Exception:
+        except Exception as e:
             cur.close()
             conn.close()
             return "You already voted in this election"
@@ -582,9 +630,18 @@ def manage_candidates():
         WHERE candidates.approved = 0
     """)
     
-    candidates_list = cur.fetchall()
+    candidates_rows = cur.fetchall()
     cur.close()
     conn.close()
+    
+    candidates_list = []
+    for c in candidates_rows:
+        candidates_list.append({
+            "id": c[0],
+            "name": c[1],
+            "title": c[2],
+            "approved": c[3]
+        })
     
     return render_template("admin/manage_candidates.html", candidates=candidates_list)
 
