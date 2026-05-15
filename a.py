@@ -2,6 +2,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, session, jsonify
 import os
 import random
+import smtplib
 import time
 from datetime import datetime, timedelta
 import psycopg2
@@ -27,6 +28,36 @@ def get_db_connection():
         url = url.replace("postgres://", "postgresql://", 1)
     conn = psycopg2.connect(url, sslmode="require")
     return conn
+
+def execute_query(query, params=None, fetch_one=False, fetch_all=False, commit=False):
+    """Execute query with automatic placeholder conversion for PostgreSQL"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Convert ? to %s for PostgreSQL
+    if params:
+        query = query.replace("?", "%s")
+    
+    try:
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        
+        result = None
+        if fetch_one:
+            result = cursor.fetchone()
+        elif fetch_all:
+            result = cursor.fetchall()
+        
+        if commit:
+            conn.commit()
+        
+        return result, conn
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise e
 
 def init_db():
     conn = get_db_connection()
@@ -113,7 +144,7 @@ def send_verification_email(to_email, otp):
         return False
     
     try:
-        from_email = os.environ.get("FROM_EMAIL", "lightphoton3108@gmail.com")
+        from_email = os.environ.get("FROM_EMAIL", "noreply@evoting.com")
         message = Mail(
             from_email=from_email,
             to_emails=to_email,
@@ -153,62 +184,64 @@ def home():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        un = request.form.get("username")
-        em = request.form.get("email")
-        pw = request.form.get("password")
-        nm = request.form.get("name")
+        name = request.form.get("name")
+        username = request.form.get("username")
+        email = request.form.get("email")
+        password = request.form.get("password")
+        confirm = request.form.get("confirm_password")
         
-        if pw != request.form.get("confirm_password"):
+        if password != confirm:
             return "Passwords do not match"
-
-        try:
-            exists = execute_query("SELECT id FROM users WHERE username = ? OR email = ?", (un, em), fetch_one=True)
-            if exists: return "Username or Email already exists"
-            
-            otp = str(random.randint(1000, 9999))
-            session["temp_user"] = {
-                "name": nm, "username": un, "email": em,
-                "password": generate_password_hash(pw)
-            }
-            session["reg_otp"] = otp
-
-            # SMTP Gmail
-            try:
-                e_user = os.environ.get("EMAIL_USER")
-                e_pass = os.environ.get("EMAIL_PASS").replace(" ", "")
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-                    server.login(e_user, e_pass)
-                    server.sendmail(e_user, em, f"Subject: OTP\n\nYour OTP is {otp}")
-            except Exception as mail_err:
-                # Log the OTP so you can find it in Render Dashboard -> Logs
-                print(f"!!! MAIL FAILED. OTP FOR {un} IS: {otp}")
-                # We still redirect so you can enter the OTP from the logs!
-                return render_template("auth/verify_register.html", msg="Email failed, but check logs for OTP.")
-
-            return redirect("/verify_register")
-        except Exception as e:
-            return f"System Error: {str(e)}"
-
-    return render_template("auth/register.html")
-
-@app.route("/verify_register", methods=["GET", "POST"])
-def verify_register():
-    # If the session was lost, go back to register
-    if "reg_otp" not in session:
-        return "Session expired. Please register again."
-
-    if request.method == "POST":
-        if request.form.get("otp") == session["reg_otp"]:
-            u = session["temp_user"]
-            execute_query("""INSERT INTO users (name, username, email, password, role, created_at) 
-                          VALUES (?, ?, ?, ?, ?, ?)""",
-                          (u['name'], u['username'], u['email'], u['password'], 'voter', datetime.now().strftime("%Y-%m-%d")), 
-                          commit=True)
-            session.clear()
-            return redirect("/login")
-        return "Incorrect OTP. Check Render logs if you didn't get an email."
         
-    return render_template("auth/verify_register.html")
+        if len(password) < 6:
+            return "Password must be at least 6 characters"
+        
+        # Check if user exists
+        result, conn = execute_query(
+            "SELECT id FROM users WHERE username = ? OR email = ?",
+            (username, email),
+            fetch_one=True
+        )
+        
+        if result:
+            conn.close()
+            return "Username or Email already exists"
+        conn.close()
+        
+        # Generate OTP
+        otp = str(random.randint(100000, 999999))
+        
+        # Store temp user in session
+        session["temp_user"] = {
+            "name": name,
+            "username": username,
+            "email": email,
+            "password": generate_password_hash(password)
+        }
+        
+        # Save verification code
+        save_verification_code(email, otp)
+        
+        # Try to send email via SendGrid
+        email_sent = send_verification_email(email, otp)
+        
+        if email_sent:
+            return redirect("/verify-email")
+        else:
+            # Fallback: Print OTP to logs and show it to user
+            print(f"===== OTP for {email} is: {otp} =====")
+            return f"""
+            <html>
+            <body>
+                <h2>Email could not be sent</h2>
+                <p>Your OTP is: <strong>{otp}</strong></p>
+                <p>Please use this OTP to verify your email.</p>
+                <a href="/verify-email">Click here to verify</a>
+            </body>
+            </html>
+            """
+    
+    return render_template("auth/register.html")
 
 @app.route("/verify-email", methods=["GET", "POST"])
 def verify_email():
@@ -220,19 +253,14 @@ def verify_email():
         email = session["temp_user"]["email"]
         
         if verify_code(email, otp):
-            conn = get_db_connection()
-            cur = conn.cursor()
-            
             user = session["temp_user"]
-            cur.execute("""
+            result, conn = execute_query("""
                 INSERT INTO users (name, username, email, password, role, is_verified)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING id
-            """, (user["name"], user["username"], user["email"], user["password"], "voter", True))
+            """, (user["name"], user["username"], user["email"], user["password"], "voter", True), commit=True)
             
-            user_id = cur.fetchone()[0]
-            conn.commit()
-            cur.close()
+            user_id = result[0]
             conn.close()
             
             session["username"] = user["username"]
