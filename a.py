@@ -7,20 +7,20 @@ from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import DictCursor
 
-# Use Resend for email (free, 3000 emails/month)
+# Use Brevo for email (free, 300 emails/day, works on Render)
 try:
-    import resend
-    RESEND_AVAILABLE = True
+    from brevo_python import Configuration, ApiClient, TransactionalEmailsApi, SendSmtpEmail
+    BREVO_AVAILABLE = True
 except ImportError:
-    RESEND_AVAILABLE = False
-    print("⚠️ Resend not installed. Run: pip install resend")
+    BREVO_AVAILABLE = False
+    print("⚠️ Brevo not installed. Run: pip install brevo-python")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key")
 app.permanent_session_lifetime = timedelta(minutes=10)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
 
 def get_db_connection():
     url = DATABASE_URL
@@ -151,24 +151,28 @@ def init_db():
 init_db()
 
 def send_verification_email(to_email, otp):
-    """Send OTP email using Resend API"""
-    if not RESEND_AVAILABLE:
-        print("❌ Resend not installed")
+    """Send OTP email using Brevo API (works on Render free tier)"""
+    if not BREVO_AVAILABLE:
+        print("❌ Brevo not installed")
         return False
     
-    if not RESEND_API_KEY:
-        print("❌ RESEND_API_KEY not set in environment variables")
+    if not BREVO_API_KEY:
+        print("❌ BREVO_API_KEY not set in environment variables")
         return False
     
     try:
-        resend.api_key = RESEND_API_KEY
-        from_email = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
+        configuration = Configuration()
+        configuration.api_key['api-key'] = BREVO_API_KEY
         
-        params = {
-            "from": from_email,
-            "to": to_email,
-            "subject": "Verify Your Email - E-Voting System",
-            "html": f"""
+        api_instance = TransactionalEmailsApi(ApiClient(configuration))
+        
+        from_email = os.environ.get("FROM_EMAIL", "noreply@send.navi.on.com")
+        
+        send_smtp_email = SendSmtpEmail(
+            to=[{"email": to_email}],
+            sender={"name": "E-Voting System", "email": from_email},
+            subject="Verify Your Email - E-Voting System",
+            html_content=f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                     <h2 style="color: #333;">Email Verification</h2>
                     <p>Thank you for registering with E-Voting System.</p>
@@ -180,14 +184,14 @@ def send_verification_email(to_email, otp):
                     <p style="font-size: 12px; color: #999;">E-Voting System - Secure Online Voting Platform</p>
                 </div>
             """
-        }
+        )
         
-        response = resend.Emails.send(params)
-        print(f"✅ Email sent to {to_email}, Response ID: {response.get('id')}")
+        api_instance.send_transac_email(send_smtp_email)
+        print(f"✅ Email sent to {to_email}")
         return True
         
     except Exception as e:
-        print(f"❌ Resend error: {str(e)}")
+        print(f"❌ Brevo error: {str(e)}")
         return False
 
 def save_verification_code(email, code):
@@ -254,7 +258,7 @@ def register():
         # Save verification code
         save_verification_code(email, otp)
         
-        # Try to send email via Resend
+        # Try to send email via Brevo
         email_sent = send_verification_email(email, otp)
         
         if email_sent:
