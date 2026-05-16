@@ -7,19 +7,20 @@ from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import DictCursor
 
+# Use Resend for email (free, 3000 emails/month)
 try:
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-    SENDGRID_AVAILABLE = True
+    import resend
+    RESEND_AVAILABLE = True
 except ImportError:
-    SENDGRID_AVAILABLE = False
+    RESEND_AVAILABLE = False
+    print("⚠️ Resend not installed. Run: pip install resend")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key")
 app.permanent_session_lifetime = timedelta(minutes=10)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 
 def get_db_connection():
     url = DATABASE_URL
@@ -150,22 +151,43 @@ def init_db():
 init_db()
 
 def send_verification_email(to_email, otp):
-    if not SENDGRID_AVAILABLE or not SENDGRID_API_KEY:
+    """Send OTP email using Resend API"""
+    if not RESEND_AVAILABLE:
+        print("❌ Resend not installed")
+        return False
+    
+    if not RESEND_API_KEY:
+        print("❌ RESEND_API_KEY not set in environment variables")
         return False
     
     try:
-        from_email = os.environ.get("FROM_EMAIL", "noreply@evoting.com")
-        message = Mail(
-            from_email=from_email,
-            to_emails=to_email,
-            subject='Verify Your Email',
-            html_content=f'Your OTP is: {otp}'
-        )
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(message)
-        return response.status_code == 202
+        resend.api_key = RESEND_API_KEY
+        from_email = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
+        
+        params = {
+            "from": from_email,
+            "to": to_email,
+            "subject": "Verify Your Email - E-Voting System",
+            "html": f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #333;">Email Verification</h2>
+                    <p>Thank you for registering with E-Voting System.</p>
+                    <p>Your OTP code is:</p>
+                    <h1 style="font-size: 36px; color: #667eea; letter-spacing: 5px; text-align: center;">{otp}</h1>
+                    <p>This code is valid for <strong>5 minutes</strong>.</p>
+                    <p>If you didn't request this, please ignore this email.</p>
+                    <hr style="margin: 20px 0;">
+                    <p style="font-size: 12px; color: #999;">E-Voting System - Secure Online Voting Platform</p>
+                </div>
+            """
+        }
+        
+        response = resend.Emails.send(params)
+        print(f"✅ Email sent to {to_email}, Response ID: {response.get('id')}")
+        return True
+        
     except Exception as e:
-        print(f"SendGrid error: {e}")
+        print(f"❌ Resend error: {str(e)}")
         return False
 
 def save_verification_code(email, code):
@@ -232,7 +254,7 @@ def register():
         # Save verification code
         save_verification_code(email, otp)
         
-        # Try to send email via SendGrid
+        # Try to send email via Resend
         email_sent = send_verification_email(email, otp)
         
         if email_sent:
@@ -242,11 +264,11 @@ def register():
             print(f"===== OTP for {email} is: {otp} =====")
             return f"""
             <html>
-            <body>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
                 <h2>Email could not be sent</h2>
-                <p>Your OTP is: <strong>{otp}</strong></p>
+                <p>Your OTP is: <strong style="font-size: 24px;">{otp}</strong></p>
                 <p>Please use this OTP to verify your email.</p>
-                <a href="/verify-email">Click here to verify</a>
+                <a href="/verify-email" style="display: inline-block; padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">Click here to verify</a>
             </body>
             </html>
             """
@@ -699,7 +721,6 @@ def results():
         # Organize results by election
         elections_dict = {}
         for row in rows:
-            election_id = row[0]
             election_title = row[1]
             candidate_name = row[2]
             vote_count = row[3] if row[3] is not None else 0
@@ -716,6 +737,7 @@ def results():
         return render_template("admin/results.html", elections=elections_dict)
         
     except Exception as e:
+        cur.close()
         conn.close()
         return f"Error loading results: {str(e)}", 500
 
